@@ -57,15 +57,15 @@ type NonceResponse struct {
 
 // Service handles NATS Auth Callout ($SYS.REQ.USER.AUTH) and nonce issuance (rogue.auth.nonce).
 type Service struct {
-	cfg        config.Config
-	keys       *keys.OperatorKeys
-	validator  rpc.ChainValidator
-	nonces     *NonceStore
-	js         nats.JetStreamContext
-	nc         *nats.Conn
-	logger     *slog.Logger
-	subs       []*nats.Subscription
-	adminSet   map[string]struct{}
+	cfg       config.Config
+	keys      *keys.OperatorKeys
+	validator rpc.ChainValidator
+	nonces    *NonceStore
+	js        nats.JetStreamContext
+	nc        *nats.Conn
+	logger    *slog.Logger
+	subs      []*nats.Subscription
+	adminSet  map[string]struct{}
 }
 
 // NewService constructs an Auth Callout service.
@@ -232,10 +232,11 @@ func (s *Service) authenticateToken(userNkey, rawToken string) (string, error) {
 		fmt.Sprintf("$JS.API.STREAM.MSG.GET.%s", store.StreamChat),
 		fmt.Sprintf("$JS.API.STREAM.INFO.%s", store.StreamDM),
 		fmt.Sprintf("$JS.API.STREAM.MSG.GET.%s", store.StreamDM),
-		"$KV.ROGUE_CHANNELS.>",
-		"$KV.ROGUE_PRESENCE.>",
-		"$KV.ROGUE_PROFILES.>",
+		fmt.Sprintf("$KV.%s.%s", store.BucketPresence, addr),
 	)
+	uc.Pub.Allow.Add(kvReadPerms(store.BucketChannels)...)
+	uc.Pub.Allow.Add(kvReadPerms(store.BucketPresence)...)
+	uc.Pub.Allow.Add(kvReadPerms(store.BucketProfiles)...)
 	uc.Sub.Allow.Add(
 		"rogue.chat.*.msg",
 		"rogue.chat.*.delete",
@@ -352,5 +353,17 @@ func (s *Service) replyJSON(msg *nats.Msg, v any) {
 func SignNKeyHelper(kp nkeys.KeyPair) nats.SignatureHandler {
 	return func(nonce []byte) ([]byte, error) {
 		return kp.Sign(nonce)
+	}
+}
+
+func kvReadPerms(bucket string) []string {
+	stream := "KV_" + bucket
+	return []string{
+		fmt.Sprintf("$JS.API.STREAM.INFO.%s", stream),
+		fmt.Sprintf("$JS.API.STREAM.MSG.GET.%s", stream),
+		fmt.Sprintf("$JS.API.DIRECT.GET.%s.>", stream),
+		fmt.Sprintf("$JS.API.CONSUMER.CREATE.%s.>", stream),
+		fmt.Sprintf("$JS.API.CONSUMER.DELETE.%s.>", stream),
+		fmt.Sprintf("$JS.API.CONSUMER.INFO.%s.>", stream),
 	}
 }

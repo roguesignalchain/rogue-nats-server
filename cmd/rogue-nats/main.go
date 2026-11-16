@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/roguesignalchain/rogue-nats-server/internal/cli"
 	"github.com/roguesignalchain/rogue-nats-server/internal/config"
 	"github.com/roguesignalchain/rogue-nats-server/internal/server"
 )
@@ -18,7 +19,7 @@ var Version = "0.1.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
+		cli.PrintUsage(os.Stderr)
 		os.Exit(1)
 	}
 
@@ -30,9 +31,10 @@ func main() {
 		}
 	case "version":
 		fmt.Printf("rogue-nats %s\n", Version)
+	case "help", "-h", "--help":
+		cli.PrintUsage(os.Stdout)
 	default:
-		printUsage()
-		os.Exit(1)
+		os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
 }
 
@@ -85,8 +87,4 @@ func newJSONLogger(levelStr string) *slog.Logger {
 		level = slog.LevelError
 	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
-}
-
-func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: rogue-nats <command> [flags]\n\nCommands:\n  serve     Start the Rogue Signal NATS + JetStream server\n  version   Print version information\n")
 }

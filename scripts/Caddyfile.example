@@ -1,0 +1,7 @@
+# Example Caddy reverse proxy for WebSocket (WSS) traffic on nats.roguechain.org.
+# Note: Native TCP/TLS clients (rogue-desktop-client async-nats & rogue-nats CLI)
+# connect directly to port 4222 with --tls-cert / --tls-key enabled on rogue-nats.
+
+wss.roguechain.org {
+    reverse_proxy 127.0.0.1:4223
+}

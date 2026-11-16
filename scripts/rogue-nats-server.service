@@ -1,0 +1,22 @@
+[Unit]
+Description=Rogue Signal NATS + JetStream Messaging Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rogue
+Group=rogue
+WorkingDirectory=/var/lib/rogue-nats
+EnvironmentFile=/etc/rogue-nats/env
+ExecStart=/usr/local/bin/rogue-nats serve --data-dir /var/lib/rogue-nats/data
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rogue-nats
+
+[Install]
+WantedBy=multi-user.target

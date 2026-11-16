@@ -9,9 +9,9 @@ import (
 
 // RateLimiter enforces per-address message and control-command rate limits scaled by MinerLevel.
 type RateLimiter struct {
-	mu       sync.Mutex
-	msgLim   map[string]*rate.Limiter
-	roomLim  map[string]*rate.Limiter
+	mu      sync.Mutex
+	msgLim  map[string]*rate.Limiter
+	roomLim map[string]*rate.Limiter
 }
 
 // NewRateLimiter creates a per-address rate limiter.

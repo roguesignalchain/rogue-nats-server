@@ -20,10 +20,10 @@ import (
 
 // RogueServer wraps the embedded NATS + JetStream daemon and internal services.
 type RogueServer struct {
-	cfg       config.Config
-	logger    *slog.Logger
-	validator rpc.ChainValidator
-	keys      *keys.OperatorKeys
+	cfg           config.Config
+	logger        *slog.Logger
+	validator     rpc.ChainValidator
+	keys          *keys.OperatorKeys
 	natsSrv       *server.Server
 	adminNC       *nats.Conn
 	authSvc       *auth.Service
