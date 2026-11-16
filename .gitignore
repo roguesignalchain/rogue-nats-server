@@ -1,0 +1,26 @@
+# Compiled binaries and release artifacts
+/rogue-nats
+/rogue-nats.exe
+dist/
+build/
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+*.AppImage
+*.exe
+*.msi
+
+# Runtime data, JetStream storage, and generated NKeys
+data/
+*.nk
+*.jwt
+*.db
+*.log
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
