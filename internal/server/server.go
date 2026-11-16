@@ -12,6 +12,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/roguesignalchain/rogue-nats-server/internal/auth"
 	"github.com/roguesignalchain/rogue-nats-server/internal/config"
+	"github.com/roguesignalchain/rogue-nats-server/internal/gatekeeper"
 	"github.com/roguesignalchain/rogue-nats-server/internal/keys"
 	"github.com/roguesignalchain/rogue-nats-server/internal/rpc"
 	"github.com/roguesignalchain/rogue-nats-server/internal/store"
@@ -23,9 +24,10 @@ type RogueServer struct {
 	logger    *slog.Logger
 	validator rpc.ChainValidator
 	keys      *keys.OperatorKeys
-	natsSrv   *server.Server
-	adminNC   *nats.Conn
-	authSvc   *auth.Service
+	natsSrv       *server.Server
+	adminNC       *nats.Conn
+	authSvc       *auth.Service
+	gatekeeperSvc *gatekeeper.Service
 }
 
 // New validates configuration and prepares a RogueServer with the default JSON-RPC validator.
@@ -151,6 +153,12 @@ func (r *RogueServer) Start(ctx context.Context) error {
 		return fmt.Errorf("start auth callout service: %w", err)
 	}
 
+	r.gatekeeperSvc = gatekeeper.NewService(r.cfg, r.validator, ns, nc, js, r.logger)
+	if err := r.gatekeeperSvc.Start(); err != nil {
+		r.Shutdown()
+		return fmt.Errorf("start gatekeeper service: %w", err)
+	}
+
 	r.logger.Info("rogue-nats-server started",
 		"client_url", r.ClientURL(),
 		"ws_port", r.WSPort(),
@@ -169,6 +177,10 @@ func (r *RogueServer) Start(ctx context.Context) error {
 
 // Shutdown gracefully closes internal services and the embedded NATS server.
 func (r *RogueServer) Shutdown() {
+	if r.gatekeeperSvc != nil {
+		r.gatekeeperSvc.Stop()
+		r.gatekeeperSvc = nil
+	}
 	if r.authSvc != nil {
 		r.authSvc.Stop()
 		r.authSvc = nil
