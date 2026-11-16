@@ -121,6 +121,37 @@ func TestAuthCalloutPermissionsAndRPCEnforcement(t *testing.T) {
 		t.Fatalf("flush own ingress: %v", err)
 	}
 
+	// Authenticated client must be able to write its own presence and list KV keys (ephemeral consumer creation).
+	clientJS, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("client JetStream: %v", err)
+	}
+	presKV, err := clientJS.KeyValue(store.BucketPresence)
+	if err != nil {
+		t.Fatalf("KeyValue(ROGUE_PRESENCE): %v", err)
+	}
+	if _, err := presKV.Put(addr, []byte(`{"address":"`+addr+`","active_room":"general","level":0,"updated_at":1}`)); err != nil {
+		t.Fatalf("presence Put: %v", err)
+	}
+	pKeys, err := presKV.Keys()
+	if err != nil {
+		t.Fatalf("presence Keys: %v", err)
+	}
+	if len(pKeys) != 1 || pKeys[0] != addr {
+		t.Fatalf("unexpected presence keys: %v", pKeys)
+	}
+	chKV, err := js.KeyValue(store.BucketChannels)
+	if err != nil {
+		t.Fatalf("KeyValue(ROGUE_CHANNELS): %v", err)
+	}
+	cKeys, err := chKV.Keys()
+	if err != nil {
+		t.Fatalf("channels Keys: %v", err)
+	}
+	if len(cKeys) == 0 {
+		t.Fatal("expected default channels in ROGUE_CHANNELS")
+	}
+
 	// Permission errors in NATS are reported asynchronously via ErrorHandler on Flush.
 	errCh := make(chan error, 2)
 	nc.SetErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {

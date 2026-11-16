@@ -362,7 +362,9 @@ func kvReadPerms(bucket string) []string {
 		fmt.Sprintf("$JS.API.STREAM.INFO.%s", stream),
 		fmt.Sprintf("$JS.API.STREAM.MSG.GET.%s", stream),
 		fmt.Sprintf("$JS.API.DIRECT.GET.%s.>", stream),
+		fmt.Sprintf("$JS.API.CONSUMER.CREATE.%s", stream),
 		fmt.Sprintf("$JS.API.CONSUMER.CREATE.%s.>", stream),
+		fmt.Sprintf("$JS.API.CONSUMER.MSG.NEXT.%s.>", stream),
 		fmt.Sprintf("$JS.API.CONSUMER.DELETE.%s.>", stream),
 		fmt.Sprintf("$JS.API.CONSUMER.INFO.%s.>", stream),
 	}
