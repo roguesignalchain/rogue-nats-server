@@ -10,35 +10,50 @@ import (
 
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
+	"github.com/roguesignalchain/rogue-nats-server/internal/auth"
 	"github.com/roguesignalchain/rogue-nats-server/internal/config"
 	"github.com/roguesignalchain/rogue-nats-server/internal/keys"
+	"github.com/roguesignalchain/rogue-nats-server/internal/rpc"
 	"github.com/roguesignalchain/rogue-nats-server/internal/store"
 )
 
-// RogueServer wraps the embedded NATS + JetStream daemon and internal state.
+// RogueServer wraps the embedded NATS + JetStream daemon and internal services.
 type RogueServer struct {
-	cfg      config.Config
-	logger   *slog.Logger
-	keys     *keys.OperatorKeys
-	natsSrv  *server.Server
-	adminNC  *nats.Conn
+	cfg       config.Config
+	logger    *slog.Logger
+	validator rpc.ChainValidator
+	keys      *keys.OperatorKeys
+	natsSrv   *server.Server
+	adminNC   *nats.Conn
+	authSvc   *auth.Service
 }
 
-// New validates configuration and prepares a RogueServer instance.
+// New validates configuration and prepares a RogueServer with the default JSON-RPC validator.
 func New(cfg config.Config, logger *slog.Logger) (*RogueServer, error) {
+	validator := rpc.NewJSONRPCClient(cfg.RPCURL, cfg.LookbackBlocks)
+	return NewWithValidator(cfg, validator, logger)
+}
+
+// NewWithValidator constructs a RogueServer with a custom ChainValidator (useful for tests).
+func NewWithValidator(cfg config.Config, validator rpc.ChainValidator, logger *slog.Logger) (*RogueServer, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
+	}
+	if validator == nil {
+		return nil, fmt.Errorf("chain validator cannot be nil")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &RogueServer{
-		cfg:    cfg,
-		logger: logger,
+		cfg:       cfg,
+		logger:    logger,
+		validator: validator,
 	}, nil
 }
 
-// Start initializes NKeys, boots the embedded NATS/JetStream server, and bootstraps streams/KVs.
+// Start initializes NKeys, boots the embedded NATS/JetStream server with Auth Callout,
+// and bootstraps streams/KV buckets.
 func (r *RogueServer) Start(ctx context.Context) error {
 	opKeys, err := keys.LoadOrCreate(filepath.Join(r.cfg.DataDir, "keys"))
 	if err != nil {
@@ -46,6 +61,7 @@ func (r *RogueServer) Start(ctx context.Context) error {
 	}
 	r.keys = opKeys
 
+	rogueAcc := server.NewAccount("ROGUE")
 	opts := &server.Options{
 		ServerName: "rogue-nats-server",
 		Host:       r.cfg.Host,
@@ -55,6 +71,19 @@ func (r *RogueServer) Start(ctx context.Context) error {
 		StoreDir:   filepath.Join(r.cfg.DataDir, "jetstream"),
 		NoSigs:     true,
 		MaxPayload: 64 * 1024,
+		Accounts:   []*server.Account{rogueAcc},
+		Nkeys: []*server.NkeyUser{
+			{
+				Nkey:    opKeys.AuthCalloutPub,
+				Account: rogueAcc,
+			},
+		},
+		AuthCallout: &server.AuthCallout{
+			Issuer:          opKeys.AccountPub,
+			Account:         "ROGUE",
+			AuthUsers:       []string{opKeys.AuthCalloutPub},
+			AllowedAccounts: []string{"ROGUE"},
+		},
 		Websocket: server.WebsocketOpts{
 			Host:           r.cfg.Host,
 			Port:           r.cfg.WSPort,
@@ -87,10 +116,21 @@ func (r *RogueServer) Start(ctx context.Context) error {
 	}
 	r.natsSrv = ns
 
-	nc, err := nats.Connect("", nats.InProcessServer(ns))
+	if acc, err := ns.LookupAccount("ROGUE"); err == nil {
+		if err := acc.EnableJetStream(nil, nil); err != nil {
+			ns.Shutdown()
+			return fmt.Errorf("enable jetstream on ROGUE account: %w", err)
+		}
+	}
+
+	nc, err := nats.Connect(
+		"",
+		nats.InProcessServer(ns),
+		nats.Nkey(opKeys.AuthCalloutPub, auth.SignNKeyHelper(opKeys.AuthCalloutKP)),
+	)
 	if err != nil {
 		ns.Shutdown()
-		return fmt.Errorf("connect in-process admin client: %w", err)
+		return fmt.Errorf("connect in-process service client: %w", err)
 	}
 	r.adminNC = nc
 
@@ -103,6 +143,12 @@ func (r *RogueServer) Start(ctx context.Context) error {
 	if err := store.Bootstrap(js, r.cfg); err != nil {
 		r.Shutdown()
 		return fmt.Errorf("bootstrap jetstream store: %w", err)
+	}
+
+	r.authSvc = auth.NewService(r.cfg, opKeys, r.validator, js, nc, r.logger)
+	if err := r.authSvc.Start(); err != nil {
+		r.Shutdown()
+		return fmt.Errorf("start auth callout service: %w", err)
 	}
 
 	r.logger.Info("rogue-nats-server started",
@@ -121,8 +167,12 @@ func (r *RogueServer) Start(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown gracefully closes the internal client and embedded NATS server.
+// Shutdown gracefully closes internal services and the embedded NATS server.
 func (r *RogueServer) Shutdown() {
+	if r.authSvc != nil {
+		r.authSvc.Stop()
+		r.authSvc = nil
+	}
 	if r.adminNC != nil {
 		r.adminNC.Close()
 		r.adminNC = nil

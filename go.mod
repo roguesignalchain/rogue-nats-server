@@ -4,6 +4,7 @@ go 1.26.8
 
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.9.0-default-no-op // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect

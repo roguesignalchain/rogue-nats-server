@@ -10,9 +10,24 @@ import (
 	"time"
 
 	"github.com/roguesignalchain/rogue-nats-server/internal/config"
+	"github.com/roguesignalchain/rogue-nats-server/internal/rpc"
 	"github.com/roguesignalchain/rogue-nats-server/internal/server"
 	"github.com/roguesignalchain/rogue-nats-server/internal/store"
 )
+
+type stubValidator struct {
+	state rpc.AccountState
+	err   error
+}
+
+func (s *stubValidator) VerifyAccount(_ context.Context, addr string) (rpc.AccountState, error) {
+	if s.err != nil {
+		return rpc.AccountState{}, s.err
+	}
+	st := s.state
+	st.Address = addr
+	return st, nil
+}
 
 func TestServerBootstrapAndMonitoring(t *testing.T) {
 	dataDir := t.TempDir()
@@ -24,7 +39,14 @@ func TestServerBootstrapAndMonitoring(t *testing.T) {
 	cfg.DataDir = dataDir
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	srv, err := server.New(cfg, logger)
+	validator := &stubValidator{
+		state: rpc.AccountState{
+			BalanceLatest:   rpc.RogueToWei(10),
+			BalanceLookback: rpc.RogueToWei(10),
+			MinerLevel:      1,
+		},
+	}
+	srv, err := server.NewWithValidator(cfg, validator, logger)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}
@@ -109,7 +131,7 @@ func TestServerBootstrapAndMonitoring(t *testing.T) {
 
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
-	srv2, err := server.New(cfg, logger)
+	srv2, err := server.NewWithValidator(cfg, validator, logger)
 	if err != nil {
 		t.Fatalf("server.New restart: %v", err)
 	}
